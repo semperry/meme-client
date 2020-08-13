@@ -1,130 +1,132 @@
-import React from "react";
-import DropzoneComponent from "react-dropzone-component";
-import request from "superagent";
-import axios from "axios";
+import React, { useState, useEffect, useRef } from "react";
 import { navigate } from "hookrouter";
+import axios from "axios";
+import DropzoneComponent from "react-dropzone-component";
 
 import "../../node_modules/react-dropzone-component/styles/filepicker.css";
 import "../../node_modules/dropzone/dist/min/dropzone.min.css";
 
-const MemeForm = props => {
-  const [input, setInput] = React.useState("");
-  const [favorite, setFavorite] = React.useState(false);
-  const [image, setImage] = React.useState("");
-  const imageRef = React.useRef(null);
+const MemeForm = (props) => {
+	const [text, setText] = useState("");
+	const [favorite, setFavorite] = useState(false);
+	const [image, setImage] = useState("");
+	const imageRef = useRef(null);
 
-  React.useEffect(() => {
-    if (props.id && props.editMode) {
-      fetch(`http://localhost:5000/meme/${props.id}`)
-        .then(response => response.json())
-        .then(data => {
-          setInput(data.text);
-          setFavorite(data.favorite);
-        });
-    }
-  }, []);
+	const componentConfig = () => {
+		return {
+			iconFiletypes: [".jpg", ".png"],
+			showFiletypeIcon: true,
+			postUrl: "https://httpbin.org/post",
+		};
+	};
 
-  const componentConfig = () => {
-    return {
-      iconFiletypes: [".jpg", ".png"],
-      showFiletypeIcon: true,
-      postUrl: "https://httpbin.org/post"
-    };
-  };
+	const djsConfig = () => {
+		return {
+			addRemoveLinks: true,
+			maxFiles: 1,
+		};
+	};
 
-  const handleDrop = () => {
-    return {
-      addedfile: file => {
-        let upload = request
-          .post("https://api.cloudinary.com/v1_1/semper-ry/image/upload")
-          .field("upload_preset", "meme-images")
-          .field("file", file);
+	const handleDrop = () => {
+		return {
+			addedfile: (file) => {
+				const formData = new FormData();
 
-        upload.end((err, res) => {
-          if (err) {
-            console.log("Cloudinary error: ", err);
-          }
-          if (res.body.secure_url !== "") {
-            setImage(res.body.secure_url);
-          }
-        });
-      }
-    };
-  };
+				formData.append("upload_preset", "meme-images");
+				formData.append("file", file);
 
-  const djsConfig = () => {
-    return {
-      addRemoveLinks: true,
-      maxFiles: 1
-    };
-  };
+				fetch("https://api.cloudinary.com/v1_1/semper-ry/image/upload", {
+					method: "POST",
+					body: formData,
+				})
+					.then((res) => res.json())
+					.then((data) => {
+						setImage(data.secure_url);
+					})
+					.catch((err) => console.error(err));
+			},
+		};
+	};
 
-  const handleSubmit = async e => {
-    e.preventDefault();
-    if (props.editMode) {
-      await fetch(`http://localhost:5000/meme/${props.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify({
-          text: input,
-          favorite: favorite
-        })
-      })
-        .then(imageRef.current.dropzone.removeAllFiles())
-        .catch(err => console.log("put error: ", err));
-    } else {
-      await axios
-        .post("http://localhost:5000/add-meme", {
-          text: input,
-          image: image,
-          favorite: favorite
-        })
-        .then(() => {
-          setInput("");
-          setImage("");
-          setFavorite(false);
-          imageRef.current.dropzone.removeAllFiles();
-        })
-        .then(navigate("/"))
-        .catch(err => {
-          console.log("form submit: ", err);
-        });
-    }
-  };
+	const handleSubmit = async (e) => {
+		e.preventDefault();
 
-  return (
-    <div>
-      <h1>Add a Meme</h1>
-      <form onSubmit={handleSubmit}>
-        <DropzoneComponent
-          ref={imageRef}
-          config={componentConfig()}
-          djsConfig={djsConfig()}
-          eventHandlers={handleDrop()}
-        >
-          Drop Yo' Meme
-        </DropzoneComponent>
-        <input
-          type="text"
-          placeholder="Caption"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-        />
-        <div>
-          <input
-            type="checkbox"
-            checked={favorite}
-            onChange={() => setFavorite(!favorite)}
-          />
-          <span>Favorite?</span>
-        </div>
-        <button type="submit">Post Meme</button>
-      </form>
-    </div>
-  );
+		switch (!props.id) {
+			case false:
+				await fetch(`https://rec-meme-flask.herokuapp.com/meme/${props.id}`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						Accept: "application/json",
+					},
+					body: JSON.stringify({
+						text,
+						favorite,
+					}),
+				})
+					.then(() => imageRef.current.dropzone.removeAllFiles())
+					.then(() => navigate("/"))
+					.catch((err) => console.error("PUT Error: ", err));
+				break;
+			default:
+				await axios
+					.post("https://rec-meme-flask.herokuapp.com/add-meme", {
+						text,
+						favorite,
+						image,
+					})
+					.then(() => {
+						setText("");
+						setImage("");
+						setFavorite(false);
+						imageRef.current.dropzone.removeAllFiles();
+					})
+					.then(() => navigate("/"))
+					.catch((err) => console.error("Handle Submit Error: ", err));
+		}
+	};
+
+	useEffect(() => {
+		if (props.id) {
+			fetch(`https://rec-meme-flask.herokuapp.com/meme/${props.id}`)
+				.then((res) => res.json())
+				.then((data) => {
+					setText(data.text);
+					setFavorite(data.favorite);
+				});
+		}
+	}, []);
+
+	return (
+		<div>
+			<h1>{props.id ? "Edit Meme" : "Add a Meme"}</h1>
+			<form onSubmit={handleSubmit}>
+				<DropzoneComponent
+					ref={imageRef}
+					config={componentConfig()}
+					djsConig={djsConfig()}
+					eventHandlers={handleDrop()}
+				>
+					Drop that sweet meme yo
+				</DropzoneComponent>
+				<input
+					type="text"
+					placeholder="Caption"
+					value={text}
+					onChange={(e) => setText(e.target.value)}
+				/>
+				<div>
+					<input
+						type="checkbox"
+						checked={favorite}
+						onChange={() => setFavorite(!favorite)}
+					/>
+					<span>Favorite?</span>
+				</div>
+				<button type="submit">{props.id ? "Update Meme" : "Post Meme"}</button>
+			</form>
+		</div>
+	);
 };
 
 export default MemeForm;
